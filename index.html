@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Cesium Map</title>
+    <script src="https://cesium.com/downloads/cesiumjs/releases/1.115/Build/Cesium/Cesium.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Turf.js/6.5.0/turf.min.js"></script>
+    <link
+      href="https://cesium.com/downloads/cesiumjs/releases/1.115/Build/Cesium/Widgets/widgets.css"
+      rel="stylesheet"
+    />
+  </head>
+  <body>
+    <div id="cesiumContainer" style="width: 100%; height: 100vh"></div>
+
+    <script>
+      const cesiumViewer = new Cesium.Viewer('cesiumContainer', {
+        terrain: Cesium.Terrain.fromWorldTerrain({
+          requestWaterMask: false,
+          requestVertexNormals: false,
+        }),
+      })
+
+      Cesium.Ion.defaultAccessToken =
+        'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiIzZTI5NTZhYi1jOTI5LTQ0Y2EtODE4Ni1kMTY5N2I0NWUxOTIiLCJpZCI6MTk3MTMyLCJpYXQiOjE3MDg1ODY3MjV9.7dwPoXuM4xUPC8ezK5OxkDy7aBVSITQUIJD0Cp6ZukI'
+
+      // Define the original polygon coordinates
+      const polygonCoords = Cesium.Cartesian3.fromDegreesArray([
+        115.87730300372058, -31.99815649565551, 115.8776101166282, -31.998155358311532, 115.87729830985518,
+        -31.998288996132025,
+      ])
+
+      // Add the original polygon to the map
+      const mainPolygon = cesiumViewer.entities.add({
+        polygon: {
+          hierarchy: polygonCoords,
+          material: Cesium.Color.BLUE.withAlpha(0.5), // Semi-transparent blue
+        },
+      })
+
+      // Assumed that we have the intersection points below:
+      const points = [
+        turf.point([115.8773740822538, -31.99815706432749]),
+        turf.point([115.87730233316839, -31.99819630268574]),
+        turf.point([115.87730099206398, -31.998250895156243]),
+        turf.point([115.8774994755152, -31.998155358311532]),
+      ]
+
+      const margin = 10
+      const marginPoints = points.reduce((acc, cur, index) => {
+        const nextIndex = index + 1
+
+        if (index % 2 === 0 && points[nextIndex]) {
+          const pointA = cur
+          const pointB = points[nextIndex]
+
+          // Calculate the bearing from A to B
+          const bearingAB = turf.bearing(pointA, pointB)
+
+          // Calculate point C, 10 meters extended from A in the opposite direction
+          const pointC = turf.destination(pointA, 10, bearingAB - 180, { units: 'meters' })
+
+          // Calculate point D, 10 meters extended from B in the same direction
+          const pointD = turf.destination(pointB, 10, bearingAB, { units: 'meters' })
+
+          acc.push(pointC)
+          acc.push(pointD)
+        }
+
+        return acc
+      }, [])
+
+      const marginPointsInCoordinates = marginPoints
+        .map((point) => {
+          return point.geometry.coordinates
+        })
+        .flat()
+
+      const polylinePositions = Cesium.Cartesian3.fromDegreesArray(marginPointsInCoordinates)
+
+      // Draw the margin polyline
+      cesiumViewer.entities.add({
+        polyline: {
+          clampToGround: true,
+          positions: polylinePositions,
+          // arcType: Cesium.ArcType.NONE,
+          width: 2,
+          material: new Cesium.PolylineOutlineMaterialProperty({
+            color: Cesium.Color.YELLOW,
+          }),
+          depthFailMaterial: new Cesium.PolylineOutlineMaterialProperty({
+            color: Cesium.Color.YELLOW,
+          }),
+        },
+      })
+
+      // Draw the margin polygon
+      cesiumViewer.entities.add({
+        polygon: {
+          hierarchy: [...polylinePositions, polylinePositions[0]],
+          material: Cesium.Color.GREEN.withAlpha(0.5), // Semi-transparent blue
+        },
+      })
+
+      const polygonHierarchy = mainPolygon?.polygon?.hierarchy?.getValue(cesiumViewer.clock.currentTime)
+      const bs = Cesium.BoundingSphere.fromPoints(polygonHierarchy.positions)
+
+      cesiumViewer.camera.setView({
+        destination: bs.center,
+        orientation: {
+          heading: cesiumViewer.camera.heading, // Maintain the current heading angle
+          pitch: Cesium.Math.toRadians(-90), // Set the desired pitch angle in radians (top-down view)
+          roll: cesiumViewer.camera.roll, // Maintain the current roll angle
+        },
+      })
+    </script>
+  </body>
+</html>
