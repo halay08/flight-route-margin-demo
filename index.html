@@ -21,20 +21,21 @@
         }),
       })
 
-      const MARGIN = 2 // m
+      const MARGIN = 100 // m
 
       Cesium.Ion.defaultAccessToken =
         'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiIzZTI5NTZhYi1jOTI5LTQ0Y2EtODE4Ni1kMTY5N2I0NWUxOTIiLCJpZCI6MTk3MTMyLCJpYXQiOjE3MDg1ODY3MjV9.7dwPoXuM4xUPC8ezK5OxkDy7aBVSITQUIJD0Cp6ZukI'
 
       // Define the original polygon coordinates
       const polygonPoints = [
-        turf.point([115.87730300372058, -31.99815649565551]),
-        turf.point([115.8776101166282, -31.998155358311532]),
-        turf.point([115.87729830985518, -31.998288996132025]),
+        turf.point([115.87700696810903, -31.99666995816703]),
+        turf.point([115.88060098754961, -31.996682830136816]),
+        turf.point([115.88061111578976, -31.99800989224804]),
+        turf.point([115.87699265758124, -31.99810180503983]),
       ]
       const polygonCoords = Cesium.Cartesian3.fromDegreesArray([
-        115.87730300372058, -31.99815649565551, 115.8776101166282, -31.998155358311532, 115.87729830985518,
-        -31.998288996132025,
+        115.87700696810903, -31.99666995816703, 115.88060098754961, -31.996682830136816, 115.88061111578976,
+        -31.99800989224804, 115.87699265758124, -31.99810180503983,
       ])
 
       let length = polygonPoints.length
@@ -56,14 +57,20 @@
         let pointC = turf.point(startCoord)
         let pointD = turf.point(endCoord)
 
-        // Calculate the bearing from A to B
-        const bearingCD = turf.bearing(pointC, pointD)
+        // Calculate bearings from the midpoint to each endpoint
+        const midpoint = turf.midpoint(pointC, pointD)
+        const bearingToC = turf.rhumbBearing(midpoint, pointC)
+        const bearingToD = turf.rhumbBearing(midpoint, pointD)
 
-        // Calculate point C, 10 meters extended from A in the opposite direction
-        pointC = turf.destination(pointC, MARGIN * 20, bearingCD - 180, { units: 'meters' })
+        // Calculate point C, margin * 1000 meters extended from A in the opposite direction
+        pointC = turf.rhumbDestination(pointC, 200, bearingToC, {
+          units: 'kilometers',
+        })
 
-        // Calculate point D, 10 meters extended from B in the same direction
-        pointD = turf.destination(pointD, MARGIN * 20, bearingCD, { units: 'meters' })
+        // Calculate point D, margin * 1000 meters extended from B in the same direction
+        pointD = turf.rhumbDestination(pointD, 200, bearingToD, {
+          units: 'kilometers',
+        })
 
         const line = turf.lineString([
           [pointC.geometry.coordinates[0], pointC.geometry.coordinates[1]],
@@ -81,9 +88,7 @@
         const nextLine = parallelLines[nextIndex]
         if (nextLine) {
           const intersects = turf.lineIntersect(line, nextLine)
-          const intersectionPoints = intersects.features.map((feature) => {
-            return feature
-          })
+          const intersectionPoints = intersects.features
           acc.push(...intersectionPoints)
         }
         return acc
