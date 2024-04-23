@@ -28,14 +28,14 @@
 
       // Define the original polygon coordinates
       const polygonPoints = [
-        turf.point([115.87700696810903, -31.99666995816703]),
-        turf.point([115.88060098754961, -31.996682830136816]),
-        turf.point([115.88061111578976, -31.99800989224804]),
-        turf.point([115.87699265758124, -31.99810180503983]),
+        turf.point([108.2420524398323, 16.043821951086173]),
+        turf.point([108.2326947601677, 16.043821951086173]),
+        turf.point([108.23269497129304, 16.034828747460455]),
+        turf.point([108.25058035289837, 16.032982605989083]),
       ]
       const polygonCoords = Cesium.Cartesian3.fromDegreesArray([
-        115.87700696810903, -31.99666995816703, 115.88060098754961, -31.996682830136816, 115.88061111578976,
-        -31.99800989224804, 115.87699265758124, -31.99810180503983,
+        108.2420524398323, 16.043821951086173, 108.2326947601677, 16.043821951086173, 108.23269497129304,
+        16.034828747460455, 108.25058035289837, 16.032982605989083,
       ])
 
       let length = polygonPoints.length
@@ -48,7 +48,7 @@
           [pointA.geometry.coordinates[0], pointA.geometry.coordinates[1]],
           [pointB.geometry.coordinates[0], pointB.geometry.coordinates[1]],
         ])
-        const offsetEdge = turf.lineOffset(edge, -MARGIN, { units: 'meters' })
+        const offsetEdge = turf.lineOffset(edge, MARGIN, { units: 'meters' })
 
         const startCoord = offsetEdge.geometry.coordinates[0] // Start point coordinates
         const endCoord = offsetEdge.geometry.coordinates[offsetEdge.geometry.coordinates.length - 1] // End point coordinates
@@ -63,13 +63,13 @@
         const bearingToD = turf.rhumbBearing(midpoint, pointD)
 
         // Calculate point C, margin * 1000 meters extended from A in the opposite direction
-        pointC = turf.rhumbDestination(pointC, 200, bearingToC, {
-          units: 'kilometers',
+        pointC = turf.rhumbDestination(pointC, MARGIN * 200, bearingToC, {
+          units: 'meters',
         })
 
         // Calculate point D, margin * 1000 meters extended from B in the same direction
-        pointD = turf.rhumbDestination(pointD, 200, bearingToD, {
-          units: 'kilometers',
+        pointD = turf.rhumbDestination(pointD, MARGIN * 200, bearingToD, {
+          units: 'meters',
         })
 
         const line = turf.lineString([
@@ -87,9 +87,38 @@
         const nextIndex = (index + 1) % length
         const nextLine = parallelLines[nextIndex]
         if (nextLine) {
-          const intersects = turf.lineIntersect(line, nextLine)
-          const intersectionPoints = intersects.features
-          acc.push(...intersectionPoints)
+          const intersects = turf.lineIntersect(turf.lineChunk(line, 50), turf.lineChunk(nextLine, 50))
+          const intersectionPoint = intersects.features[0]
+          acc.push(intersectionPoint)
+
+          const positions = nextLine.geometry.coordinates.flat()
+          const position = Cesium.Cartesian3.fromDegrees(
+            intersectionPoint.geometry.coordinates[0],
+            intersectionPoint.geometry.coordinates[1],
+          )
+          // Draw the offset line.
+          const polylineGraphic = {
+            clampToGround: true,
+            width: 5,
+            material: Cesium.Color.YELLOW,
+            positions: Cesium.Cartesian3.fromDegreesArray(positions),
+            arcType: Cesium.ArcType.RHUMB,
+          }
+          cesiumViewer.entities.add({
+            polyline: polylineGraphic,
+          })
+          // Draw the intersection point.
+          const pointGraphic = {
+            color: Cesium.Color.WHITE,
+            pixelSize: 10,
+            outlineColor: Cesium.Color.SKYBLUE,
+            outlineWidth: 4,
+            disableDepthTestDistance: Number.POSITIVE_INFINITY,
+          }
+          cesiumViewer.entities.add({
+            position: position,
+            point: pointGraphic,
+          })
         }
         return acc
       }, [])
@@ -110,7 +139,7 @@
       const marginPolygonPointsInCartesian = Cesium.Cartesian3.fromDegreesArray(marginPolygonPoints)
       const marginPolygon = cesiumViewer.entities.add({
         polygon: {
-          hierarchy: Cesium.Cartesian3.fromDegreesArray(marginPolygonPoints),
+          hierarchy: marginPolygonPointsInCartesian,
           material: Cesium.Color.RED.withAlpha(0.5), // Semi-transparent red
         },
       })
