@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
@@ -14,6 +14,9 @@
     <div id="cesiumContainer" style="width: 100%; height: 100vh"></div>
 
     <script>
+      Cesium.Ion.defaultAccessToken =
+        'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiIzZTI5NTZhYi1jOTI5LTQ0Y2EtODE4Ni1kMTY5N2I0NWUxOTIiLCJpZCI6MTk3MTMyLCJpYXQiOjE3MDg1ODY3MjV9.7dwPoXuM4xUPC8ezK5OxkDy7aBVSITQUIJD0Cp6ZukI'
+
       const cesiumViewer = new Cesium.Viewer('cesiumContainer', {
         terrain: Cesium.Terrain.fromWorldTerrain({
           requestWaterMask: false,
@@ -21,140 +24,151 @@
         }),
       })
 
-      const MARGIN = 100 // m
+      var layers = cesiumViewer.imageryLayers
 
-      Cesium.Ion.defaultAccessToken =
-        'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiIzZTI5NTZhYi1jOTI5LTQ0Y2EtODE4Ni1kMTY5N2I0NWUxOTIiLCJpZCI6MTk3MTMyLCJpYXQiOjE3MDg1ODY3MjV9.7dwPoXuM4xUPC8ezK5OxkDy7aBVSITQUIJD0Cp6ZukI'
+      // タイル画像を取得するURLのフォーマット
+      var accessToken = 'pk.eyJ1IjoiY3VybyIsImEiOiJja29qcDljMTcwNng2MnZzMnVsbHN1a3JkIn0.Cb7YAdt4sIKqb00BQ645hA'
+      var url = `https://api.mapbox.com/v4/curo.excluded_rpa/{z}/{x}/{y}.vector.pbf?sku=101i8kmos7hzu&access_token=${accessToken}`
 
-      // Define the original polygon coordinates
-      const polygonPoints = [
-        turf.point([108.2420524398323, 16.043821951086173]),
-        turf.point([108.2326947601677, 16.043821951086173]),
-        turf.point([108.23269497129304, 16.034828747460455]),
-        turf.point([108.25058035289837, 16.032982605989083]),
-      ]
-      const polygonCoords = Cesium.Cartesian3.fromDegreesArray([
-        108.2420524398323, 16.043821951086173, 108.2326947601677, 16.043821951086173, 108.23269497129304,
-        16.034828747460455, 108.25058035289837, 16.032982605989083,
-      ])
-
-      let length = polygonPoints.length
-      const parallelLines = polygonPoints.reduce((acc, cur, index) => {
-        const nextIndex = (index + 1) % length
-        const pointA = cur
-        const pointB = polygonPoints[nextIndex]
-
-        const edge = turf.lineString([
-          [pointA.geometry.coordinates[0], pointA.geometry.coordinates[1]],
-          [pointB.geometry.coordinates[0], pointB.geometry.coordinates[1]],
-        ])
-        const offsetEdge = turf.lineOffset(edge, MARGIN, { units: 'meters' })
-
-        const startCoord = offsetEdge.geometry.coordinates[0] // Start point coordinates
-        const endCoord = offsetEdge.geometry.coordinates[offsetEdge.geometry.coordinates.length - 1] // End point coordinates
-
-        // Create Turf.js points from the coordinates
-        let pointC = turf.point(startCoord)
-        let pointD = turf.point(endCoord)
-
-        // Calculate bearings from the midpoint to each endpoint
-        const midpoint = turf.midpoint(pointC, pointD)
-        const bearingToC = turf.rhumbBearing(midpoint, pointC)
-        const bearingToD = turf.rhumbBearing(midpoint, pointD)
-
-        // Calculate point C, margin * 1000 meters extended from A in the opposite direction
-        pointC = turf.rhumbDestination(pointC, MARGIN * 200, bearingToC, {
-          units: 'meters',
-        })
-
-        // Calculate point D, margin * 1000 meters extended from B in the same direction
-        pointD = turf.rhumbDestination(pointD, MARGIN * 200, bearingToD, {
-          units: 'meters',
-        })
-
-        const line = turf.lineString([
-          [pointC.geometry.coordinates[0], pointC.geometry.coordinates[1]],
-          [pointD.geometry.coordinates[0], pointD.geometry.coordinates[1]],
-        ])
-
-        acc.push(line)
-
-        return acc
-      }, [])
-
-      length = parallelLines.length
-      const marginPoints = parallelLines.reduce((acc, line, index) => {
-        const nextIndex = (index + 1) % length
-        const nextLine = parallelLines[nextIndex]
-        if (nextLine) {
-          const intersects = turf.lineIntersect(turf.lineChunk(line, 50), turf.lineChunk(nextLine, 50))
-          const intersectionPoint = intersects.features[0]
-          acc.push(intersectionPoint)
-
-          const positions = nextLine.geometry.coordinates.flat()
-          const position = Cesium.Cartesian3.fromDegrees(
-            intersectionPoint.geometry.coordinates[0],
-            intersectionPoint.geometry.coordinates[1],
-          )
-          // Draw the offset line.
-          const polylineGraphic = {
-            clampToGround: true,
-            width: 5,
-            material: Cesium.Color.YELLOW,
-            positions: Cesium.Cartesian3.fromDegreesArray(positions),
-            arcType: Cesium.ArcType.RHUMB,
-          }
-          cesiumViewer.entities.add({
-            polyline: polylineGraphic,
-          })
-          // Draw the intersection point.
-          const pointGraphic = {
-            color: Cesium.Color.WHITE,
-            pixelSize: 10,
-            outlineColor: Cesium.Color.SKYBLUE,
-            outlineWidth: 4,
-            disableDepthTestDistance: Number.POSITIVE_INFINITY,
-          }
-          cesiumViewer.entities.add({
-            position: position,
-            point: pointGraphic,
-          })
-        }
-        return acc
-      }, [])
-
-      // Add the original polygon to the map
-      const mainPolygon = cesiumViewer.entities.add({
-        polygon: {
-          hierarchy: polygonCoords,
-          material: Cesium.Color.BLUE.withAlpha(0.5), // Semi-transparent blue
-        },
+      // 独自のURLからタイル画像を取得するプロバイダを作成
+      var customImageryProvider = new Cesium.UrlTemplateImageryProvider({
+        url: url,
       })
 
-      const marginPolygonPoints = marginPoints
-        .map((point) => {
-          return point.geometry.coordinates
-        })
-        .flat()
-      const marginPolygonPointsInCartesian = Cesium.Cartesian3.fromDegreesArray(marginPolygonPoints)
-      const marginPolygon = cesiumViewer.entities.add({
-        polygon: {
-          hierarchy: marginPolygonPointsInCartesian,
-          material: Cesium.Color.RED.withAlpha(0.5), // Semi-transparent red
-        },
-      })
+      // プロバイダを表示レイヤに追加
+      layers.addImageryProvider(customImageryProvider)
 
-      const polygonHierarchy = mainPolygon?.polygon?.hierarchy?.getValue(cesiumViewer.clock.currentTime)
-      const bs = Cesium.BoundingSphere.fromPoints(polygonHierarchy.positions)
+      // const MARGIN = 100 // m
 
-      cesiumViewer.camera.setView({
-        destination: bs.center,
-        orientation: {
-          heading: cesiumViewer.camera.heading, // Maintain the current heading angle
-          pitch: Cesium.Math.toRadians(-90), // Set the desired pitch angle in radians (top-down view)
-          roll: cesiumViewer.camera.roll, // Maintain the current roll angle
-        },
-      })
+      // // Define the original polygon coordinates
+      // const polygonPoints = [
+      //   turf.point([108.2420524398323, 16.043821951086173]),
+      //   turf.point([108.2326947601677, 16.043821951086173]),
+      //   turf.point([108.23269497129304, 16.034828747460455]),
+      //   turf.point([108.25058035289837, 16.032982605989083]),
+      // ]
+      // const polygonCoords = Cesium.Cartesian3.fromDegreesArray([
+      //   108.2420524398323, 16.043821951086173, 108.2326947601677, 16.043821951086173, 108.23269497129304,
+      //   16.034828747460455, 108.25058035289837, 16.032982605989083,
+      // ])
+
+      // let length = polygonPoints.length
+      // const parallelLines = polygonPoints.reduce((acc, cur, index) => {
+      //   const nextIndex = (index + 1) % length
+      //   const pointA = cur
+      //   const pointB = polygonPoints[nextIndex]
+
+      //   const edge = turf.lineString([
+      //     [pointA.geometry.coordinates[0], pointA.geometry.coordinates[1]],
+      //     [pointB.geometry.coordinates[0], pointB.geometry.coordinates[1]],
+      //   ])
+      //   const offsetEdge = turf.lineOffset(edge, MARGIN, { units: 'meters' })
+
+      //   const startCoord = offsetEdge.geometry.coordinates[0] // Start point coordinates
+      //   const endCoord = offsetEdge.geometry.coordinates[offsetEdge.geometry.coordinates.length - 1] // End point coordinates
+
+      //   // Create Turf.js points from the coordinates
+      //   let pointC = turf.point(startCoord)
+      //   let pointD = turf.point(endCoord)
+
+      //   // Calculate bearings from the midpoint to each endpoint
+      //   const midpoint = turf.midpoint(pointC, pointD)
+      //   const bearingToC = turf.rhumbBearing(midpoint, pointC)
+      //   const bearingToD = turf.rhumbBearing(midpoint, pointD)
+
+      //   // Calculate point C, margin * 1000 meters extended from A in the opposite direction
+      //   pointC = turf.rhumbDestination(pointC, MARGIN * 200, bearingToC, {
+      //     units: 'meters',
+      //   })
+
+      //   // Calculate point D, margin * 1000 meters extended from B in the same direction
+      //   pointD = turf.rhumbDestination(pointD, MARGIN * 200, bearingToD, {
+      //     units: 'meters',
+      //   })
+
+      //   const line = turf.lineString([
+      //     [pointC.geometry.coordinates[0], pointC.geometry.coordinates[1]],
+      //     [pointD.geometry.coordinates[0], pointD.geometry.coordinates[1]],
+      //   ])
+
+      //   acc.push(line)
+
+      //   return acc
+      // }, [])
+
+      // length = parallelLines.length
+      // const marginPoints = parallelLines.reduce((acc, line, index) => {
+      //   const nextIndex = (index + 1) % length
+      //   const nextLine = parallelLines[nextIndex]
+      //   if (nextLine) {
+      //     const intersects = turf.lineIntersect(turf.lineChunk(line, 50), turf.lineChunk(nextLine, 50))
+      //     const intersectionPoint = intersects.features[0]
+      //     acc.push(intersectionPoint)
+
+      //     const positions = nextLine.geometry.coordinates.flat()
+      //     const position = Cesium.Cartesian3.fromDegrees(
+      //       intersectionPoint.geometry.coordinates[0],
+      //       intersectionPoint.geometry.coordinates[1],
+      //     )
+      //     // Draw the offset line.
+      //     const polylineGraphic = {
+      //       clampToGround: true,
+      //       width: 5,
+      //       material: Cesium.Color.YELLOW,
+      //       positions: Cesium.Cartesian3.fromDegreesArray(positions),
+      //       arcType: Cesium.ArcType.RHUMB,
+      //     }
+      //     cesiumViewer.entities.add({
+      //       polyline: polylineGraphic,
+      //     })
+      //     // Draw the intersection point.
+      //     const pointGraphic = {
+      //       color: Cesium.Color.WHITE,
+      //       pixelSize: 10,
+      //       outlineColor: Cesium.Color.SKYBLUE,
+      //       outlineWidth: 4,
+      //       disableDepthTestDistance: Number.POSITIVE_INFINITY,
+      //     }
+      //     cesiumViewer.entities.add({
+      //       position: position,
+      //       point: pointGraphic,
+      //     })
+      //   }
+      //   return acc
+      // }, [])
+
+      // // Add the original polygon to the map
+      // const mainPolygon = cesiumViewer.entities.add({
+      //   polygon: {
+      //     hierarchy: polygonCoords,
+      //     material: Cesium.Color.BLUE.withAlpha(0.5), // Semi-transparent blue
+      //   },
+      // })
+
+      // const marginPolygonPoints = marginPoints
+      //   .map((point) => {
+      //     return point.geometry.coordinates
+      //   })
+      //   .flat()
+      // const marginPolygonPointsInCartesian = Cesium.Cartesian3.fromDegreesArray(marginPolygonPoints)
+      // const marginPolygon = cesiumViewer.entities.add({
+      //   polygon: {
+      //     hierarchy: marginPolygonPointsInCartesian,
+      //     material: Cesium.Color.RED.withAlpha(0.5), // Semi-transparent red
+      //   },
+      // })
+
+      // const polygonHierarchy = mainPolygon?.polygon?.hierarchy?.getValue(cesiumViewer.clock.currentTime)
+      // const bs = Cesium.BoundingSphere.fromPoints(polygonHierarchy.positions)
+
+      // cesiumViewer.camera.setView({
+      //   destination: bs.center,
+      //   orientation: {
+      //     heading: cesiumViewer.camera.heading, // Maintain the current heading angle
+      //     pitch: Cesium.Math.toRadians(-90), // Set the desired pitch angle in radians (top-down view)
+      //     roll: cesiumViewer.camera.roll, // Maintain the current roll angle
+      //   },
+      // })
     </script>
   </body>
 </html>
